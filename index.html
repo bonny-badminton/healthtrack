@@ -998,44 +998,17 @@ body {
         </div>
       </div>
 
-      <!-- Step 3: API Key & Summary -->
+      <!-- Step 3: Summary & Finish -->
       <div class="onboarding-step" id="setupStep3">
-        <h2 style="font-size:20px;font-weight:600;margin-bottom:6px;">設定 AI 功能 🤖</h2>
-        <p style="font-size:14px;color:var(--gray-500);margin-bottom:1.5rem;">選擇 AI 引擎啟用飲食辨識與智能分析（可稍後設定）</p>
-
-        <div class="form-group">
-          <label class="form-label">AI 引擎（擇一）</label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:1rem;" id="setupProviderSelector">
-            <div class="setup-provider-opt" data-p="openai" onclick="selectSetupProvider('openai')"
-              style="border:2px solid var(--teal-500);border-radius:var(--radius-sm);padding:12px;cursor:pointer;text-align:center;background:var(--teal-50);transition:all .15s;">
-              <div style="font-size:22px;margin-bottom:4px;">⚡</div>
-              <div style="font-size:13px;font-weight:600;">ChatGPT</div>
-              <div style="font-size:11px;color:var(--gray-500);">GPT-4o Vision</div>
-            </div>
-            <div class="setup-provider-opt" data-p="gemini" onclick="selectSetupProvider('gemini')"
-              style="border:2px solid var(--gray-200);border-radius:var(--radius-sm);padding:12px;cursor:pointer;text-align:center;transition:all .15s;">
-              <div style="font-size:22px;margin-bottom:4px;">✨</div>
-              <div style="font-size:13px;font-weight:600;">Gemini</div>
-              <div style="font-size:11px;color:var(--gray-500);">免費配額較多</div>
-            </div>
-          </div>
-        </div>
-
-        <div id="setupKeyInstructions" class="ai-message" style="margin-bottom:1rem;">
-          <h4>📋 取得 OpenAI API Key</h4>
-          <p>前往 <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--teal-500);">platform.openai.com/api-keys</a> 建立 Key（需加值才能使用 GPT-4o）</p>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label" id="setupKeyLabel">OpenAI API Key（選填）</label>
-          <div class="key-input-wrap">
-            <input type="password" class="form-input" id="s-apikey" placeholder="sk-proj-...">
-            <button class="key-toggle" onclick="toggleKeyVis('s-apikey',this)">顯示</button>
-          </div>
-          <p style="font-size:11px;color:var(--gray-500);margin-top:4px;">Key 只儲存於你的瀏覽器，之後可在「個人資料」更改</p>
-        </div>
+        <h2 style="font-size:20px;font-weight:600;margin-bottom:6px;">設定完成，準備開始 🚀</h2>
+        <p style="font-size:14px;color:var(--gray-500);margin-bottom:1.5rem;">以下是根據你的資料計算出的基礎數值</p>
 
         <div id="setupSummary" class="card" style="background:var(--gray-50);box-shadow:none;border:1px solid var(--gray-100);margin-bottom:1.5rem;"></div>
+
+        <div class="ai-message" style="margin-bottom:1.5rem;">
+          <h4>🤖 AI 飲食辨識與分析</h4>
+          <p>AI 功能由管理員統一設定，登入後即可直接使用拍照辨識熱量與個人化建議，無需任何額外設定。</p>
+        </div>
 
         <div style="display:flex;gap:8px;">
           <button class="btn btn-secondary" onclick="setupNext(-1)">← 返回</button>
@@ -1125,10 +1098,10 @@ body {
         </div>
       </div>
 
+      <!-- AI Key Banner if not set -->
       <div class="api-banner" id="apiBanner" style="display:none;">
         <span style="font-size:24px;">🤖</span>
-        <p>設定 ChatGPT 或 Gemini API Key 啟用 AI 飲食辨識與智能分析功能</p>
-        <button class="btn btn-sm" style="background:#fff8e1;border:1px solid #ffd54f;color:#e65100;flex-shrink:0;" onclick="openApiKeyModal()">設定 Key</button>
+        <p>AI 功能尚未設定，請管理員至「個人資料」頁面設定 Gemini API Key</p>
       </div>
 
       <!-- Calorie Goal Ring + Stats -->
@@ -1361,14 +1334,13 @@ body {
             <h2>🤖 AI 智能建議</h2>
             <p>根據你的飲食與體重數據，提供個人化建議</p>
           </div>
-          <span id="aiProviderBadge" class="badge badge-teal" style="cursor:pointer;" onclick="openApiKeyModal()">⚡ ChatGPT</span>
+          <span id="aiProviderBadge" class="badge badge-teal">✨ Gemini</span>
         </div>
       </div>
 
       <div id="aiKeyWarning" class="api-banner" style="display:none;">
         <span style="font-size:24px;">🔑</span>
-        <p>需要設定 ChatGPT 或 Gemini API Key 才能使用 AI 功能</p>
-        <button class="btn btn-sm" style="background:#fff8e1;border:1px solid #ffd54f;color:#e65100;flex-shrink:0;" onclick="openApiKeyModal()">立即設定</button>
+        <p>AI 功能尚未設定，請管理員至「個人資料」→「AI 工具管理」設定 Gemini API Key 後即可使用</p>
       </div>
 
       <div id="aiContent">
@@ -1452,31 +1424,31 @@ body {
 
           <div class="divider"></div>
 
-          <h3 style="font-size:15px;font-weight:600;margin-bottom:1rem;">AI 工具設定</h3>
-          <div class="form-group">
-            <label class="form-label">AI 引擎</label>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="profileProviderSelector">
-              <div class="profile-provider-opt" data-p="openai" onclick="selectProfileProvider('openai')"
-                style="border:2px solid var(--gray-200);border-radius:var(--radius-sm);padding:10px;cursor:pointer;text-align:center;transition:all .15s;">
-                <div style="font-size:18px;">⚡</div>
-                <div style="font-size:12px;font-weight:600;">ChatGPT</div>
+          <!-- 管理員面板：只有管理員才看得到 -->
+          <div id="adminSection" style="display:none;">
+            <h3 style="font-size:15px;font-weight:600;margin-bottom:6px;">🔑 AI 工具管理（管理員）</h3>
+            <p style="font-size:12px;color:var(--gray-500);margin-bottom:1rem;">設定後所有登入用戶即可共用 AI 功能</p>
+            <div style="margin-bottom:12px;" id="adminKeyStatus"></div>
+            <div class="form-group">
+              <label class="form-label">Gemini API Key</label>
+              <div class="key-input-wrap">
+                <input type="password" class="form-input" id="admin-gemini-key" placeholder="AIzaSy...">
+                <button class="key-toggle" onclick="toggleKeyVis('admin-gemini-key',this)">顯示</button>
               </div>
-              <div class="profile-provider-opt" data-p="gemini" onclick="selectProfileProvider('gemini')"
-                style="border:2px solid var(--gray-200);border-radius:var(--radius-sm);padding:10px;cursor:pointer;text-align:center;transition:all .15s;">
-                <div style="font-size:18px;">✨</div>
-                <div style="font-size:12px;font-weight:600;">Gemini</div>
-              </div>
+              <p style="font-size:11px;color:var(--gray-500);margin-top:4px;">
+                前往 <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--teal-500);">aistudio.google.com/app/apikey</a> 免費取得
+              </p>
+            </div>
+            <button class="btn btn-primary btn-sm" id="adminSaveKeyBtn" onclick="saveAdminAIKey()">儲存 Key</button>
+          </div>
+
+          <!-- 一般用戶：顯示 AI 狀態 -->
+          <div id="normalUserAIStatus">
+            <h3 style="font-size:15px;font-weight:600;margin-bottom:6px;">🤖 AI 功能狀態</h3>
+            <div id="aiStatusBadge">
+              <span class="badge badge-teal">✅ AI 功能已啟用</span>
             </div>
           </div>
-          <div class="form-group">
-            <label class="form-label" id="p-apikey-label">OpenAI API Key</label>
-            <div class="key-input-wrap">
-              <input type="password" class="form-input" id="p-apikey" placeholder="貼上 API Key...">
-              <button class="key-toggle" onclick="toggleKeyVis('p-apikey',this)">顯示</button>
-            </div>
-            <p style="font-size:11px;color:var(--gray-500);margin-top:4px;" id="p-apikey-hint"></p>
-          </div>
-          <button class="btn btn-secondary btn-sm" onclick="saveApiKey()">儲存 Key</button>
         </div>
       </div>
     </div>
@@ -1668,48 +1640,6 @@ body {
       <input type="text" class="form-input" id="wm-note" placeholder="例：早晨空腹量測">
     </div>
     <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="saveWeight()">儲存體重</button>
-  </div>
-</div>
-
-<!-- API Key Modal -->
-<div class="modal-overlay" id="apiKeyModal">
-  <div class="modal" style="max-width:480px;">
-    <div class="modal-header">
-      <span class="modal-title">設定 AI 工具</span>
-      <button class="modal-close" onclick="closeModal('apiKeyModal')">✕</button>
-    </div>
-
-    <!-- Provider selector -->
-    <div style="margin-bottom:1.25rem;">
-      <label class="form-label">選擇 AI 引擎</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;" id="providerSelector">
-        <div class="provider-opt" data-p="openai" onclick="selectProvider('openai')"
-          style="border:2px solid var(--teal-500);border-radius:var(--radius-sm);padding:12px;cursor:pointer;text-align:center;background:var(--teal-50);transition:all .15s;">
-          <div style="font-size:22px;margin-bottom:4px;">⚡</div>
-          <div style="font-size:13px;font-weight:600;">ChatGPT</div>
-          <div style="font-size:11px;color:var(--gray-500);">OpenAI GPT-4o</div>
-        </div>
-        <div class="provider-opt" data-p="gemini" onclick="selectProvider('gemini')"
-          style="border:2px solid var(--gray-200);border-radius:var(--radius-sm);padding:12px;cursor:pointer;text-align:center;transition:all .15s;">
-          <div style="font-size:22px;margin-bottom:4px;">✨</div>
-          <div style="font-size:13px;font-weight:600;">Gemini</div>
-          <div style="font-size:11px;color:var(--gray-500);">Google Gemini 1.5</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Key instructions per provider -->
-    <div id="keyInstructions"></div>
-
-    <div class="form-group">
-      <label class="form-label" id="keyInputLabel">API Key</label>
-      <div class="key-input-wrap">
-        <input type="password" class="form-input" id="modal-apikey" placeholder="貼上 API Key...">
-        <button class="key-toggle" onclick="toggleKeyVis('modal-apikey',this)">顯示</button>
-      </div>
-      <p style="font-size:11px;color:var(--gray-500);margin-top:4px;">Key 只儲存於你的瀏覽器，不會上傳伺服器</p>
-    </div>
-    <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="saveApiKeyFromModal()">儲存並啟用 AI 功能</button>
   </div>
 </div>
 
@@ -1940,40 +1870,35 @@ function updateSetupProgress() {
 }
 
 function setupNext(dir) {
+  // validate before advancing
   if (dir === 1) {
     if (setupCurrentStep === 1) {
       const by = document.getElementById('s-birthyear').value;
-      const h = document.getElementById('s-height').value;
-      const w = document.getElementById('s-weight').value;
+      const h  = document.getElementById('s-height').value;
+      const w  = document.getElementById('s-weight').value;
       if (!by || !h || !w) { showToast('請填寫所有欄位', 'error'); return; }
+      const byN = parseInt(by);
+      if (byN < 1930 || byN > 2015) { showToast('請填寫正確的出生年份', 'error'); return; }
+      if (parseFloat(h) < 50 || parseFloat(h) > 280) { showToast('請填寫正確的身高', 'error'); return; }
+      if (parseFloat(w) < 20 || parseFloat(w) > 500) { showToast('請填寫正確的體重', 'error'); return; }
     }
-    if (setupCurrentStep === 2 && !setupGoal) { showToast('請選擇目標', 'error'); return; }
-    if (setupCurrentStep === 2) renderSetupSummary();
-    setupCurrentStep = Math.min(3, setupCurrentStep + 1);
-  } else {
-    setupCurrentStep = Math.max(1, setupCurrentStep - 1);
+    if (setupCurrentStep === 2) {
+      if (!setupGoal) { showToast('請選擇目標', 'error'); return; }
+      renderSetupSummary();
+    }
   }
-  document.querySelectorAll('.onboarding-step').forEach((s, i) => {
-    s.classList.toggle('active', i === setupCurrentStep - 1);
-  });
+
+  const nextStep = dir === 1
+    ? Math.min(3, setupCurrentStep + 1)
+    : Math.max(1, setupCurrentStep - 1);
+
+  // hide current, show next — by ID to avoid querySelectorAll index mismatch
+  document.getElementById('setupStep' + setupCurrentStep).classList.remove('active');
+  document.getElementById('setupStep' + nextStep).classList.add('active');
+  setupCurrentStep = nextStep;
   updateSetupProgress();
 }
 
-function selectSetupProvider(p) {
-  localStorage.setItem('ht_ai_provider', p);
-  document.querySelectorAll('#setupProviderSelector .setup-provider-opt').forEach(el => {
-    const isActive = el.dataset.p === p;
-    el.style.borderColor = isActive ? 'var(--teal-500)' : 'var(--gray-200)';
-    el.style.background  = isActive ? 'var(--teal-50)'  : '';
-  });
-  const info = PROVIDER_INFO[p];
-  const lbl = document.getElementById('setupKeyLabel');
-  const inp = document.getElementById('s-apikey');
-  const instr = document.getElementById('setupKeyInstructions');
-  if (lbl) lbl.textContent = info.label + '（選填）';
-  if (inp) inp.placeholder = info.placeholder;
-  if (instr) instr.innerHTML = `<h4>📋 取得 ${p==='openai'?'ChatGPT':'Gemini'} API Key</h4><p>${info.hint}</p>`;
-}
 
 function selectGoal(g) {
   setupGoal = g;
@@ -2010,11 +1935,6 @@ async function finishSetup() {
   const w = parseFloat(document.getElementById('s-weight').value);
   const g = document.getElementById('s-gender').value;
   const act = parseFloat(document.getElementById('s-activity').value);
-  const apiKey = document.getElementById('s-apikey').value.trim();
-  const aiProvider = getAIProvider();
-  if (apiKey && PROVIDER_INFO[aiProvider]?.validate(apiKey)) {
-    localStorage.setItem('ht_ai_key_' + aiProvider, apiKey);
-  }
 
   if (!by || !h || !w) { showToast('請確認資料已填寫完整', 'error'); return; }
 
@@ -2423,10 +2343,15 @@ function loadProfileForm() {
   document.getElementById('p-goalweight').value= userProfile.goalWeight|| '';
   document.getElementById('p-activity').value  = userProfile.activity  || '1.55';
   document.getElementById('p-goal').value      = userProfile.goal      || 'maintain';
-  // init provider selector
-  const p = getAIProvider();
-  selectProfileProvider(p);
   renderMetabolicStats();
+  loadAdminPanel();
+  // 更新 AI 狀態 badge 給一般用戶
+  getSharedAIKey().then(key => {
+    const badge = document.getElementById('aiStatusBadge');
+    if (badge) badge.innerHTML = key
+      ? `<span class="badge badge-teal">✅ AI 功能已啟用（Gemini）</span>`
+      : `<span class="badge badge-amber">⚠️ AI 功能尚未設定</span>`;
+  });
 }
 
 function renderMetabolicStats() {
@@ -2569,84 +2494,55 @@ function makeMacroCircles(macros) {
 }
 
 // ─────────────────────────────────────────────
-// AI ENGINE — ChatGPT (OpenAI) & Gemini
+// AI ENGINE — Gemini (共用 Key，從 Firestore 讀取)
 // ─────────────────────────────────────────────
 
-function getAIProvider() {
-  return localStorage.getItem('ht_ai_provider') || 'openai';
-}
-function getAIKey(provider) {
-  return localStorage.getItem('ht_ai_key_' + (provider || getAIProvider())) || '';
-}
-function hasAIKey() {
-  const p = getAIProvider();
-  return !!getAIKey(p);
+let _cachedAIKey = null;   // 登入後 cache 一次，不重複讀 Firestore
+
+async function getSharedAIKey() {
+  if (_cachedAIKey) return _cachedAIKey;
+  try {
+    const snap = await db.collection('config').doc('ai').get();
+    if (snap.exists && snap.data().geminiKey) {
+      _cachedAIKey = snap.data().geminiKey;
+      return _cachedAIKey;
+    }
+  } catch(e) { console.warn('讀取 AI Key 失敗', e); }
+  return null;
 }
 
-function checkApiKey() {
-  const has = hasAIKey();
+async function hasAIKey() {
+  const k = await getSharedAIKey();
+  return !!k;
+}
+
+async function checkApiKey() {
+  const has = await hasAIKey();
   const banner = document.getElementById('apiBanner');
   if (banner) banner.style.display = has ? 'none' : 'flex';
 }
 
-function checkAIView() {
-  const has = hasAIKey();
-  document.getElementById('aiKeyWarning').style.display = has ? 'none' : 'flex';
-  // update provider badge
-  const p = getAIProvider();
+async function checkAIView() {
+  const has = await hasAIKey();
+  const warn = document.getElementById('aiKeyWarning');
+  if (warn) warn.style.display = has ? 'none' : 'flex';
   const badge = document.getElementById('aiProviderBadge');
-  if (badge) badge.textContent = p === 'openai' ? '⚡ ChatGPT' : '✨ Gemini';
+  if (badge) badge.textContent = '✨ Gemini';
 }
 
-// 統一 AI 呼叫介面
+// 統一呼叫介面（固定 Gemini）
 async function callAI(systemPrompt, userPrompt, imageBase64 = null) {
-  const provider = getAIProvider();
-  const key = getAIKey(provider);
-  if (!key) throw new Error('尚未設定 API Key');
-
-  if (provider === 'openai') {
-    return await callOpenAI(key, systemPrompt, userPrompt, imageBase64);
-  } else {
-    return await callGemini(key, systemPrompt, userPrompt, imageBase64);
-  }
-}
-
-async function callOpenAI(key, systemPrompt, userPrompt, imageBase64) {
-  const messages = [{ role: 'system', content: systemPrompt }];
-  if (imageBase64) {
-    messages.push({
-      role: 'user',
-      content: [
-        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: 'high' } },
-        { type: 'text', text: userPrompt }
-      ]
-    });
-  } else {
-    messages.push({ role: 'user', content: userPrompt });
-  }
-
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-    body: JSON.stringify({
-      model: imageBase64 ? 'gpt-4o' : 'gpt-4o-mini',
-      max_tokens: 1200,
-      messages
-    })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `OpenAI 錯誤 ${res.status}`);
-  }
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || '';
+  const key = await getSharedAIKey();
+  if (!key) throw new Error('尚未設定 AI Key，請聯絡管理員');
+  return await callGemini(key, systemPrompt, userPrompt, imageBase64);
 }
 
 async function callGemini(key, systemPrompt, userPrompt, imageBase64) {
-  const model = imageBase64 ? 'gemini-1.5-flash' : 'gemini-1.5-flash';
+  const model = 'gemini-1.5-flash';
   const parts = [];
   if (imageBase64) {
-    parts.push({ inlineData: { mimeType: 'image/jpeg', data: imageBase64 } });
+    const mime = uploadedPhotoMime || 'image/jpeg';
+    parts.push({ inlineData: { mimeType: mime, data: imageBase64 } });
   }
   parts.push({ text: systemPrompt + '\n\n' + userPrompt });
 
@@ -2655,7 +2551,10 @@ async function callGemini(key, systemPrompt, userPrompt, imageBase64) {
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 1200 } })
+      body: JSON.stringify({
+        contents: [{ parts }],
+        generationConfig: { maxOutputTokens: 1500, temperature: 0.7 }
+      })
     }
   );
   if (!res.ok) {
@@ -2663,14 +2562,83 @@ async function callGemini(key, systemPrompt, userPrompt, imageBase64) {
     throw new Error(err.error?.message || `Gemini 錯誤 ${res.status}`);
   }
   const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('Gemini 未返回內容，請稍後再試');
+  return text;
+}
+
+// ─────────────────────────────────────────────
+// 管理員：儲存 AI Key 到 Firestore
+// ─────────────────────────────────────────────
+async function saveAdminAIKey() {
+  const key = document.getElementById('admin-gemini-key').value.trim();
+  if (!key.startsWith('AIza') || key.length < 20) {
+    showToast('Key 格式不正確（需以 AIzaSy 開頭）', 'error'); return;
+  }
+  const btn = document.getElementById('adminSaveKeyBtn');
+  btn.textContent = '儲存中...'; btn.disabled = true;
+  try {
+    await db.collection('config').doc('ai').set({
+      geminiKey: key,
+      provider: 'gemini',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser.email
+    });
+    _cachedAIKey = key;
+    document.getElementById('admin-gemini-key').value = '••••••••' + key.slice(-6);
+    showToast('AI Key 已儲存，所有用戶即可使用 ✓', 'success');
+    checkApiKey();
+    checkAIView();
+  } catch(e) {
+    showToast('儲存失敗：' + e.message, 'error');
+  } finally {
+    btn.textContent = '儲存 Key'; btn.disabled = false;
+  }
+}
+
+async function loadAdminPanel() {
+  // 確認是否為管理員
+  const isAdmin = await checkIsAdmin();
+  const adminSection = document.getElementById('adminSection');
+  if (adminSection) adminSection.style.display = isAdmin ? 'block' : 'none';
+  if (!isAdmin) return;
+
+  // 讀取現有 Key 狀態
+  try {
+    const snap = await db.collection('config').doc('ai').get();
+    if (snap.exists && snap.data().geminiKey) {
+      const k = snap.data().geminiKey;
+      document.getElementById('admin-gemini-key').value = '••••••••' + k.slice(-6);
+      document.getElementById('adminKeyStatus').innerHTML =
+        `<span class="badge badge-teal">✅ 已設定</span>
+         <span style="font-size:11px;color:var(--gray-500);margin-left:8px;">
+           最後更新：${snap.data().updatedBy || '—'}
+         </span>`;
+    } else {
+      document.getElementById('adminKeyStatus').innerHTML =
+        `<span class="badge badge-amber">⚠️ 尚未設定</span>`;
+    }
+  } catch(e) { /* 非管理員讀取會被 rules 擋住，正常 */ }
+}
+
+async function checkIsAdmin() {
+  if (!currentUser) return false;
+  try {
+    const snap = await db.collection('config').doc('admins').get();
+    if (!snap.exists) {
+      // 沒有 admins 文件 → 第一位用戶自動成為管理員
+      await db.collection('config').doc('admins').set({ emails: [currentUser.email] });
+      return true;
+    }
+    return (snap.data().emails || []).includes(currentUser.email);
+  } catch(e) { return false; }
 }
 
 // ─────────────────────────────────────────────
 // AI ANALYSIS (智能建議頁)
 // ─────────────────────────────────────────────
 async function getAIAnalysis(type) {
-  if (!hasAIKey()) { openApiKeyModal(); return; }
+  if (!(await hasAIKey())) { showToast('AI 功能尚未設定，請聯絡管理員', 'error'); return; }
 
   document.getElementById('aiResult').innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;padding:2rem;color:var(--gray-500);">
@@ -2697,7 +2665,7 @@ async function getAIAnalysis(type) {
 
 function renderAIResult(text, type) {
   const typeNames = { daily:'今日飲食分析', weekly:'週報分析', goal:'目標進度建議', nutrition:'營養缺口分析' };
-  const providerName = getAIProvider() === 'openai' ? 'ChatGPT' : 'Gemini';
+  const providerName = 'Gemini';
   // simple markdown-to-html
   const html = text
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -2767,7 +2735,7 @@ function handlePhotoUpload(e) {
 }
 
 async function analyzePhoto() {
-  if (!hasAIKey()) { openApiKeyModal(); return; }
+  if (!(await hasAIKey())) { showToast('AI 功能尚未設定，請聯絡管理員', 'error'); return; }
   if (!uploadedPhotoBase64) return;
 
   const btn = document.getElementById('analyzePhotoBtn');
@@ -2776,7 +2744,7 @@ async function analyzePhoto() {
   document.getElementById('aiPhotoResult').innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;padding:12px;color:var(--gray-500);font-size:13px;">
       <div style="width:16px;height:16px;border:2px solid var(--teal-300);border-top-color:var(--teal-700);border-radius:50%;animation:spin .8s linear infinite;"></div>
-      <span>${getAIProvider()==='openai'?'ChatGPT':'Gemini'} 正在辨識食物熱量...</span>
+      <span>Gemini 正在辨識食物熱量...</span>
     </div>
   `;
 
@@ -2802,7 +2770,7 @@ async function analyzePhoto() {
 
     document.getElementById('aiPhotoResult').innerHTML = `
       <div class="ai-message">
-        <h4>✅ 辨識完成 (${getAIProvider()==='openai'?'ChatGPT':'Gemini'})</h4>
+        <h4>✅ 辨識完成 (Gemini)</h4>
         <p><strong>${esc(json.foodName)}</strong> — 約 <strong>${json.calories} kcal</strong><br>
         蛋白 ${json.protein}g · 碳水 ${json.carbs}g · 脂肪 ${json.fat}g<br>
         <span style="font-size:11px;color:var(--gray-500);">${esc(json.note||'')}</span></p>
@@ -2947,101 +2915,8 @@ function openWeightModal() {
   openModal('weightModal');
 }
 // ─────────────────────────────────────────────
-// PROVIDER SELECTOR HELPERS
+// FOOD TAB SWITCHER
 // ─────────────────────────────────────────────
-const PROVIDER_INFO = {
-  openai: {
-    label: 'OpenAI API Key',
-    placeholder: 'sk-proj-... 或 sk-...',
-    hint: '前往 <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--teal-500);">platform.openai.com/api-keys</a> 取得 Key，新帳號有免費額度',
-    validate: k => k.startsWith('sk-')
-  },
-  gemini: {
-    label: 'Google Gemini API Key',
-    placeholder: 'AIzaSy...',
-    hint: '前往 <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--teal-500);">aistudio.google.com/app/apikey</a> 免費取得（完全免費配額）',
-    validate: k => k.startsWith('AIza') && k.length > 20
-  }
-};
-
-function selectProvider(p) {
-  localStorage.setItem('ht_ai_provider', p);
-  document.querySelectorAll('#providerSelector .provider-opt').forEach(el => {
-    const isActive = el.dataset.p === p;
-    el.style.borderColor  = isActive ? 'var(--teal-500)' : 'var(--gray-200)';
-    el.style.background   = isActive ? 'var(--teal-50)'  : '';
-  });
-  const info = PROVIDER_INFO[p];
-  document.getElementById('keyInputLabel').textContent = info.label;
-  document.getElementById('modal-apikey').placeholder  = info.placeholder;
-  // show existing key masked
-  const existing = getAIKey(p);
-  document.getElementById('modal-apikey').value = existing ? '••••••••' + existing.slice(-6) : '';
-  document.getElementById('keyInstructions').innerHTML = `
-    <div class="ai-message" style="margin-bottom:1rem;">
-      <h4>📋 如何取得 ${p === 'openai' ? 'ChatGPT' : 'Gemini'} API Key？</h4>
-      <p>${info.hint}</p>
-    </div>`;
-}
-
-function selectProfileProvider(p) {
-  localStorage.setItem('ht_ai_provider', p);
-  document.querySelectorAll('#profileProviderSelector .profile-provider-opt').forEach(el => {
-    const isActive = el.dataset.p === p;
-    el.style.borderColor = isActive ? 'var(--teal-500)' : 'var(--gray-200)';
-    el.style.background  = isActive ? 'var(--teal-50)'  : '';
-  });
-  const info = PROVIDER_INFO[p];
-  const lbl = document.getElementById('p-apikey-label');
-  const hint = document.getElementById('p-apikey-hint');
-  if (lbl) lbl.textContent = info.label;
-  if (hint) hint.innerHTML = info.hint;
-  const existing = getAIKey(p);
-  document.getElementById('p-apikey').value = existing ? '••••••••' + existing.slice(-6) : '';
-  document.getElementById('p-apikey').placeholder = info.placeholder;
-}
-
-function openApiKeyModal() {
-  openModal('apiKeyModal');
-  const current = getAIProvider();
-  selectProvider(current);
-}
-
-function saveApiKeyFromModal() {
-  const p = getAIProvider();
-  const raw = document.getElementById('modal-apikey').value.trim();
-  if (raw.startsWith('••')) {
-    // unchanged — just close
-    closeModal('apiKeyModal');
-    checkApiKey();
-    checkAIView();
-    return;
-  }
-  const info = PROVIDER_INFO[p];
-  if (!info.validate(raw)) {
-    showToast(`Key 格式不正確（${p === 'openai' ? '需以 sk- 開頭' : '需以 AIzaSy 開頭'}）`, 'error');
-    return;
-  }
-  localStorage.setItem('ht_ai_key_' + p, raw);
-  closeModal('apiKeyModal');
-  showToast(`${p === 'openai' ? 'ChatGPT' : 'Gemini'} API Key 已儲存 ✓`, 'success');
-  checkApiKey();
-  checkAIView();
-}
-
-function saveApiKey() {
-  const p = getAIProvider();
-  const raw = document.getElementById('p-apikey').value.trim();
-  if (raw.startsWith('••')) { showToast('Key 未變更', 'success'); return; }
-  const info = PROVIDER_INFO[p];
-  if (!info.validate(raw)) {
-    showToast('Key 格式不正確', 'error'); return;
-  }
-  localStorage.setItem('ht_ai_key_' + p, raw);
-  showToast('API Key 已儲存 ✓', 'success');
-  checkApiKey();
-}
-
 function switchFoodTab(tab, el) {
   ['manual','photo','barcode'].forEach(t => {
     document.getElementById('foodTab-'+t).style.display = t === tab ? 'block' : 'none';
