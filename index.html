@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HealthTrack — 健康紀錄</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.19.1/umd/index.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
@@ -1522,7 +1523,7 @@ body {
   <div class="modal">
     <div class="modal-header">
       <span class="modal-title">記錄飲食</span>
-      <button class="modal-close" onclick="closeModal('foodModal')">✕</button>
+      <button class="modal-close" onclick="closeFoodModal()">✕</button>
     </div>
 
     <div class="tab-bar">
@@ -1604,16 +1605,33 @@ body {
 
     <!-- Barcode Tab -->
     <div id="foodTab-barcode" style="display:none;">
-      <div style="text-align:center;padding:2rem;">
-        <div style="font-size:48px;margin-bottom:1rem;">📱</div>
-        <h3 style="font-size:16px;font-weight:500;margin-bottom:8px;">條碼掃描</h3>
-        <p style="font-size:13px;color:var(--gray-500);margin-bottom:1.5rem;">輸入條碼號碼查詢 Open Food Facts 資料庫</p>
+      <!-- 相機掃描區 -->
+      <div id="scannerWrap" style="position:relative;border-radius:var(--radius-md);overflow:hidden;background:#000;margin-bottom:1rem;display:none;">
+        <video id="scannerVideo" style="width:100%;max-height:240px;display:block;object-fit:cover;"></video>
+        <!-- 瞄準框 -->
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;">
+          <div style="width:220px;height:120px;border:2px solid var(--teal-300);border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,0.4);"></div>
+        </div>
+        <button onclick="stopScanner()" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.6);color:white;border:none;border-radius:20px;padding:4px 12px;font-size:12px;cursor:pointer;">停止</button>
+      </div>
+
+      <div style="text-align:center;padding:1rem 0.5rem 0.5rem;">
+        <button class="btn btn-primary" id="startScanBtn" onclick="startScanner()" style="width:100%;justify-content:center;margin-bottom:1rem;">
+          📷 開啟相機掃描條碼
+        </button>
+
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:1rem;">
+          <div style="flex:1;height:1px;background:var(--gray-200);"></div>
+          <span style="font-size:12px;color:var(--gray-400);">或手動輸入</span>
+          <div style="flex:1;height:1px;background:var(--gray-200);"></div>
+        </div>
+
         <div style="display:flex;gap:8px;">
-          <input type="text" class="form-input" id="barcodeInput" placeholder="輸入條碼號碼">
+          <input type="text" class="form-input" id="barcodeInput" placeholder="輸入條碼號碼（EAN-13）" inputmode="numeric">
           <button class="btn btn-primary" onclick="lookupBarcode()">查詢</button>
         </div>
-        <div id="barcodeResult" style="margin-top:1rem;text-align:left;"></div>
       </div>
+      <div id="barcodeResult" style="margin-top:0.5rem;text-align:left;"></div>
     </div>
   </div>
 </div>
@@ -1687,7 +1705,36 @@ const MEAL_NAMES = { breakfast:'早餐', lunch:'午餐', dinner:'晚餐', snack:
 // ─────────────────────────────────────────────
 // FIREBASE INIT
 // ─────────────────────────────────────────────
+
+// ✏️ 管理員設定區：把你的 Firebase 設定貼在這裡
+// 設定一次後上傳 GitHub，所有人開啟都不需要再設定
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAS2XnA8UYVXAsQTDvL6jzRDe8DOmZfyf0",
+  authDomain: "healthtrack-4658d.firebaseapp.com",
+  projectId: "healthtrack-4658d",
+  storageBucket: "healthtrack-4658d.firebasestorage.app",
+  messagingSenderId: "111105716111",
+  appId: "1:111105716111:web:8ac7921718006ba0ce25fa"
+};
+
+const FIREBASE_CONFIGURED = FIREBASE_CONFIG.apiKey !== "";
+
 function loadFirebaseConfig() {
+  // 優先用寫死的設定
+  if (FIREBASE_CONFIGURED) {
+    try {
+      if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+      db = firebase.firestore();
+      db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+      auth = firebase.auth();
+      setupAuthListener();
+      return true;
+    } catch(e) {
+      console.warn('Firebase init error:', e);
+      return false;
+    }
+  }
+  // 備用：從 localStorage 讀取（舊版相容）
   const saved = localStorage.getItem('ht_firebase_config');
   if (!saved) return false;
   try {
@@ -1695,7 +1742,6 @@ function loadFirebaseConfig() {
     if (!cfg.apiKey || !cfg.projectId) return false;
     if (!firebase.apps.length) firebase.initializeApp(cfg);
     db = firebase.firestore();
-    // 啟用 Firestore offline persistence（靜默失敗也沒關係）
     db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
     auth = firebase.auth();
     setupAuthListener();
@@ -1712,17 +1758,20 @@ function saveFirebaseConfig() {
   try {
     const cfg = JSON.parse(raw);
     if (!cfg.apiKey || !cfg.projectId) throw new Error('缺少必要欄位');
+    // 存到 localStorage 讓這個裝置本次可用
     localStorage.setItem('ht_firebase_config', JSON.stringify(cfg));
-    // 若 firebase 尚未初始化則初始化，否則直接使用已存在 app
     try {
-      if (!firebase.apps.length) {
-        firebase.initializeApp(cfg);
-      }
+      if (!firebase.apps.length) firebase.initializeApp(cfg);
     } catch(initErr) { /* already initialized */ }
     db = firebase.firestore();
+    db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
     auth = firebase.auth();
     closeModal('firebaseModal');
-    showToast('Firebase 設定成功！請登入 ✓', 'success');
+    showToast('Firebase 設定成功！', 'success');
+    // 提示把設定寫進程式碼
+    setTimeout(() => {
+      showToast('⚠️ 記得把設定寫入 index.html 的 FIREBASE_CONFIG，其他人才不需要重新設定', '');
+    }, 2000);
     setupAuthListener();
   } catch(e) {
     showToast('設定格式有誤：' + e.message, 'error');
@@ -2817,43 +2866,232 @@ async function analyzePhoto() {
 }
 
 // ─────────────────────────────────────────────
-// BARCODE LOOKUP
+// BARCODE SCANNER (ZXing)
 // ─────────────────────────────────────────────
-async function lookupBarcode() {
-  const code = document.getElementById('barcodeInput').value.trim();
-  if (!code) return;
-  document.getElementById('barcodeResult').innerHTML = '<p style="font-size:13px;color:var(--gray-500);">查詢中...</p>';
+let _zxingReader = null;
+let _scannerActive = false;
+
+async function startScanner() {
+  const wrap = document.getElementById('scannerWrap');
+  const video = document.getElementById('scannerVideo');
+  const btn = document.getElementById('startScanBtn');
+
+  // 檢查 ZXing 是否載入
+  if (typeof ZXing === 'undefined') {
+    showToast('條碼掃描器載入中，請稍後再試', 'error'); return;
+  }
+
   try {
-    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json`);
-    const data = await res.json();
-    if (data.status === 1 && data.product) {
-      const p = data.product;
-      const n = p.nutriments || {};
-      const name = p.product_name || '未知食品';
-      const cal = Math.round(n['energy-kcal_100g'] || n['energy_100g']/4.184 || 0);
-      document.getElementById('barcodeResult').innerHTML = `
-        <div class="ai-message">
-          <h4>✅ 找到：${name}</h4>
-          <p>每 100g：${cal} kcal，蛋白 ${Math.round(n.proteins_100g||0)}g，碳水 ${Math.round(n.carbohydrates_100g||0)}g，脂肪 ${Math.round(n.fat_100g||0)}g</p>
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="fillBarcodeData('${name}',${cal},${Math.round(n.proteins_100g||0)},${Math.round(n.carbohydrates_100g||0)},${Math.round(n.fat_100g||0)})">使用此資料</button>
-      `;
-    } else {
-      document.getElementById('barcodeResult').innerHTML = '<p style="font-size:13px;color:var(--red-500);">找不到此條碼，請手動輸入</p>';
-    }
+    wrap.style.display = 'block';
+    btn.style.display = 'none';
+    _scannerActive = true;
+
+    const hints = new Map();
+    const formats = [
+      ZXing.BarcodeFormat.EAN_13,
+      ZXing.BarcodeFormat.EAN_8,
+      ZXing.BarcodeFormat.CODE_128,
+      ZXing.BarcodeFormat.QR_CODE,
+      ZXing.BarcodeFormat.UPC_A,
+    ];
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+    _zxingReader = new ZXing.BrowserMultiFormatReader(hints);
+
+    const devices = await ZXing.BrowserCodeReader.listVideoInputDevices();
+    // 優先後鏡頭
+    const backCam = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[0];
+    const deviceId = backCam?.deviceId;
+
+    await _zxingReader.decodeFromVideoDevice(deviceId, video, (result, err) => {
+      if (result && _scannerActive) {
+        const code = result.getText();
+        stopScanner();
+        document.getElementById('barcodeInput').value = code;
+        lookupBarcode(code);
+      }
+    });
   } catch(e) {
-    document.getElementById('barcodeResult').innerHTML = '<p style="font-size:13px;color:var(--red-500);">查詢失敗</p>';
+    stopScanner();
+    if (e.name === 'NotAllowedError') {
+      showToast('請允許相機權限才能掃描', 'error');
+    } else {
+      showToast('相機啟動失敗，請手動輸入條碼', 'error');
+    }
   }
 }
 
-function fillBarcodeData(name, cal, prot, carb, fat) {
-  document.getElementById('fm-name').value = name;
-  document.getElementById('fm-cal').value = cal;
-  document.getElementById('fm-protein').value = prot;
-  document.getElementById('fm-carbs').value = carb;
-  document.getElementById('fm-fat').value = fat;
-  switchFoodTab('manual', document.querySelector('[onclick="switchFoodTab(\'manual\',this)"]'));
-  showToast('資料已填入！', 'success');
+function stopScanner() {
+  _scannerActive = false;
+  if (_zxingReader) {
+    _zxingReader.reset();
+    _zxingReader = null;
+  }
+  const wrap = document.getElementById('scannerWrap');
+  const btn = document.getElementById('startScanBtn');
+  if (wrap) wrap.style.display = 'none';
+  if (btn) btn.style.display = 'flex';
+  // stop video tracks
+  const video = document.getElementById('scannerVideo');
+  if (video && video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+  }
+}
+
+// ─────────────────────────────────────────────
+// BARCODE LOOKUP — 多資料庫查詢
+// ─────────────────────────────────────────────
+async function lookupBarcode(codeArg) {
+  const code = (codeArg || document.getElementById('barcodeInput').value).trim();
+  if (!code) return;
+  document.getElementById('barcodeInput').value = code;
+
+  const resultEl = document.getElementById('barcodeResult');
+  resultEl.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;padding:12px;color:var(--gray-500);font-size:13px;">
+      <div style="width:14px;height:14px;border:2px solid var(--teal-300);border-top-color:var(--teal-700);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0;"></div>
+      <span>搜尋食品資料庫中...</span>
+    </div>`;
+
+  // 嘗試多個資料庫
+  const product = await fetchFromMultipleDBs(code);
+
+  if (product) {
+    renderBarcodeResult(product);
+  } else {
+    // 找不到 → 提示用 AI 估算或手動輸入
+    resultEl.innerHTML = `
+      <div style="background:#fff8e1;border-radius:8px;padding:12px;border-left:3px solid #ffd54f;margin-bottom:12px;">
+        <p style="font-size:13px;font-weight:500;color:#e65100;">找不到條碼 ${code} 的食品資料</p>
+        <p style="font-size:12px;color:var(--gray-700);margin-top:4px;">此商品可能尚未收錄在資料庫中</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" onclick="switchFoodTab('manual', document.querySelector('[onclick=\\'switchFoodTab(\\'manual\\',this)\\']'))">✏️ 手動輸入</button>
+        <button class="btn btn-secondary btn-sm" onclick="switchFoodTab('photo', document.querySelectorAll('#foodModal .tab-btn')[1])">📸 改用拍照辨識</button>
+      </div>`;
+  }
+}
+
+async function fetchFromMultipleDBs(code) {
+  // 1. Open Food Facts 全球庫
+  try {
+    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json`);
+    const d = await r.json();
+    if (d.status === 1 && d.product?.nutriments) {
+      return parseOFFProduct(d.product);
+    }
+  } catch(e) {}
+
+  // 2. Open Food Facts 台灣庫
+  try {
+    const r = await fetch(`https://tw.openfoodfacts.org/api/v2/product/${code}.json`);
+    const d = await r.json();
+    if (d.status === 1 && d.product?.nutriments) {
+      return parseOFFProduct(d.product);
+    }
+  } catch(e) {}
+
+  // 3. Open Food Facts 日本庫（台灣進口日本食品很多）
+  try {
+    const r = await fetch(`https://jp.openfoodfacts.org/api/v2/product/${code}.json`);
+    const d = await r.json();
+    if (d.status === 1 && d.product?.nutriments) {
+      return parseOFFProduct(d.product);
+    }
+  } catch(e) {}
+
+  return null;
+}
+
+function parseOFFProduct(p) {
+  const n = p.nutriments || {};
+  // 熱量：優先 kcal，備用 kJ 換算
+  let cal = n['energy-kcal_100g'] || n['energy-kcal'] || 0;
+  if (!cal && (n['energy_100g'] || n['energy'])) {
+    cal = Math.round((n['energy_100g'] || n['energy']) / 4.184);
+  }
+  // 名稱：優先中文
+  const name = p.product_name_zh
+    || p.product_name_zh_TW
+    || p.product_name_zh_CN
+    || p.product_name_ja
+    || p.product_name
+    || '未知食品';
+  // 每份量
+  const servingSize = p.serving_size || '100g';
+  const servingCal = n['energy-kcal_serving'] || n['energy-kcal_100g'] || 0;
+
+  return {
+    name,
+    brand: p.brands || '',
+    cal: Math.round(cal),
+    protein: Math.round(n.proteins_100g || 0),
+    carbs: Math.round(n.carbohydrates_100g || 0),
+    fat: Math.round(n.fat_100g || 0),
+    fiber: Math.round(n.fiber_100g || 0),
+    sodium: Math.round(n.sodium_100g * 1000 || n['salt_100g'] * 400 || 0),
+    servingSize,
+    servingCal: Math.round(servingCal),
+    source: p.countries_tags?.includes('en:taiwan') ? '台灣' : '國際'
+  };
+}
+
+function renderBarcodeResult(p) {
+  const resultEl = document.getElementById('barcodeResult');
+  resultEl.innerHTML = `
+    <div class="ai-message" style="margin-bottom:12px;">
+      <h4>✅ ${esc(p.name)}${p.brand ? ' <span style="font-weight:400;font-size:12px;">— '+esc(p.brand)+'</span>' : ''}</h4>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px;text-align:center;">
+        <div style="background:white;border-radius:6px;padding:8px;">
+          <div style="font-size:16px;font-weight:600;color:var(--teal-700);">${p.cal}</div>
+          <div style="font-size:10px;color:var(--gray-500);">kcal/100g</div>
+        </div>
+        <div style="background:white;border-radius:6px;padding:8px;">
+          <div style="font-size:16px;font-weight:600;color:#1976d2;">${p.protein}g</div>
+          <div style="font-size:10px;color:var(--gray-500);">蛋白質</div>
+        </div>
+        <div style="background:white;border-radius:6px;padding:8px;">
+          <div style="font-size:16px;font-weight:600;color:#fb8c00;">${p.carbs}g</div>
+          <div style="font-size:10px;color:var(--gray-500);">碳水</div>
+        </div>
+        <div style="background:white;border-radius:6px;padding:8px;">
+          <div style="font-size:16px;font-weight:600;color:#e53935;">${p.fat}g</div>
+          <div style="font-size:10px;color:var(--gray-500);">脂肪</div>
+        </div>
+      </div>
+      ${p.fiber || p.sodium ? `<p style="font-size:11px;color:var(--gray-500);margin-top:6px;">膳食纖維 ${p.fiber}g・鈉 ${p.sodium}mg（每 100g）</p>` : ''}
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+      <label class="form-label" style="margin:0;white-space:nowrap;">食用份量 (g)</label>
+      <input type="number" class="form-input" id="barcodeServingG" placeholder="100" value="100" style="max-width:80px;"
+        oninput="updateBarcodeCalc(${p.cal},${p.protein},${p.carbs},${p.fat})">
+      <span style="font-size:13px;color:var(--gray-500);">= <strong id="barcodeCalcCal">${p.cal}</strong> kcal</span>
+    </div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;"
+      onclick="fillBarcodeDataFromScan('${esc(p.name)}',${p.cal},${p.protein},${p.carbs},${p.fat})">
+      使用此資料填入
+    </button>
+  `;
+}
+
+function updateBarcodeCalc(cal100, prot100, carb100, fat100) {
+  const g = parseFloat(document.getElementById('barcodeServingG').value) || 100;
+  const ratio = g / 100;
+  document.getElementById('barcodeCalcCal').textContent = Math.round(cal100 * ratio);
+}
+
+function fillBarcodeDataFromScan(name, cal100, prot100, carb100, fat100) {
+  const g = parseFloat(document.getElementById('barcodeServingG')?.value) || 100;
+  const ratio = g / 100;
+  document.getElementById('fm-name').value    = name;
+  document.getElementById('fm-cal').value     = Math.round(cal100 * ratio);
+  document.getElementById('fm-protein').value = Math.round(prot100 * ratio * 10) / 10;
+  document.getElementById('fm-carbs').value   = Math.round(carb100 * ratio * 10) / 10;
+  document.getElementById('fm-fat').value     = Math.round(fat100 * ratio * 10) / 10;
+  document.getElementById('fm-amount').value  = g;
+  switchFoodTab('manual', document.querySelectorAll('#foodModal .tab-btn')[0]);
+  showToast('資料已填入，請確認後儲存 ✓', 'success');
 }
 
 // ─────────────────────────────────────────────
@@ -2921,6 +3159,11 @@ function openFoodModal() {
   document.getElementById('fm-date').value = document.getElementById('foodDate')?.value || TODAY();
   openModal('foodModal');
 }
+
+function closeFoodModal() {
+  stopScanner();
+  closeModal('foodModal');
+}
 function openWeightModal() {
   document.getElementById('wm-date').value = TODAY();
   openModal('weightModal');
@@ -2945,7 +3188,10 @@ function toggleKeyVis(inputId, btn) {
 // Close modal on backdrop click
 document.querySelectorAll('.modal-overlay').forEach(o => {
   o.addEventListener('click', e => {
-    if (e.target === o) o.classList.remove('open');
+    if (e.target === o) {
+      if (o.id === 'foodModal') stopScanner();
+      o.classList.remove('open');
+    }
   });
 });
 
@@ -3040,13 +3286,12 @@ function esc(s) {
 // INIT
 // ─────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
-  // Setup progress init
   showPage('login');
   initSetupProgress();
 
-  // Try to load firebase config
   if (!loadFirebaseConfig()) {
-    // First run — show login page but intercept google sign in to show firebase setup
+    // Firebase 未設定 → 點登入按鈕時才跳設定 Modal
+    // （由 signInWithGoogle 的 !auth 判斷處理）
   }
 });
 </script>
