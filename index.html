@@ -994,7 +994,7 @@ body {
         </div>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-secondary" onclick="setupNext(-1)">← 返回</button>
-          <button class="btn btn-primary" onclick="setupNext(2)" style="flex:1;justify-content:center;">下一步 →</button>
+          <button class="btn btn-primary" onclick="setupNext(1)" style="flex:1;justify-content:center;">下一步 →</button>
         </div>
       </div>
 
@@ -1870,8 +1870,10 @@ function updateSetupProgress() {
 }
 
 function setupNext(dir) {
+  const forward = dir > 0;
+
   // validate before advancing
-  if (dir === 1) {
+  if (forward) {
     if (setupCurrentStep === 1) {
       const by = document.getElementById('s-birthyear').value;
       const h  = document.getElementById('s-height').value;
@@ -1888,11 +1890,10 @@ function setupNext(dir) {
     }
   }
 
-  const nextStep = dir === 1
+  const nextStep = forward
     ? Math.min(3, setupCurrentStep + 1)
     : Math.max(1, setupCurrentStep - 1);
 
-  // hide current, show next — by ID to avoid querySelectorAll index mismatch
   document.getElementById('setupStep' + setupCurrentStep).classList.remove('active');
   document.getElementById('setupStep' + nextStep).classList.add('active');
   setupCurrentStep = nextStep;
