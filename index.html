@@ -804,7 +804,13 @@ body {
     background: white;
     border-top: 1px solid var(--gray-100);
     padding: 8px 0;
-    z-index: 100;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    z-index: 200;
+    box-shadow: 0 -2px 12px rgba(0,0,0,0.06);
+  }
+  /* 內容區避免被底部導覽列遮住 */
+  .main-content {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }
 }
 .mobile-nav { display: none; }
@@ -1840,6 +1846,8 @@ async function signOut() {
     currentUser = null;
     userProfile = {};
     userGoals = {};
+    _isAdminCache = null;
+    _cachedAIKey = null;
     // destroy all charts
     Object.values(chartInstances).forEach(c => { try { c.destroy(); } catch(_) {} });
     chartInstances = {};
@@ -2589,6 +2597,13 @@ async function callAI(systemPrompt, userPrompt, imageBase64 = null) {
 
 async function callGemini(key, systemPrompt, userPrompt, imageBase64) {
   const model = 'gemini-1.5-flash';
+  const isOAuthKey = key.startsWith('AQ.');
+
+  // AQ. key 用 Bearer token 方式
+  const headers = { 'Content-Type': 'application/json' };
+  const urlKey = isOAuthKey ? '' : `?key=${key}`;
+  if (isOAuthKey) headers['Authorization'] = `Bearer ${key}`;
+
   const parts = [];
   if (imageBase64) {
     const mime = (typeof uploadedPhotoMime !== 'undefined' && uploadedPhotoMime) ? uploadedPhotoMime : 'image/jpeg';
@@ -2596,29 +2611,27 @@ async function callGemini(key, systemPrompt, userPrompt, imageBase64) {
   }
   parts.push({ text: systemPrompt + '\n\n' + userPrompt });
 
-  // AQ. 開頭是 Google AI Studio OAuth key，用 Bearer token 方式呼叫
-  const isOAuthKey = key.startsWith('AQ.');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent${isOAuthKey ? '' : '?key=' + key}`;
-  const headers = { 'Content-Type': 'application/json' };
-  if (isOAuthKey) headers['Authorization'] = `Bearer ${key}`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: { maxOutputTokens: 1500, temperature: 0.7 }
-    })
-  });
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent${urlKey}`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        contents: [{ parts }],
+        generationConfig: { maxOutputTokens: 1500, temperature: 0.7 }
+      })
+    }
+  );
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    const msg = err.error?.message || `Gemini 錯誤 ${res.status}`;
-    // OAuth key 認證失敗時給出明確說明
     if (res.status === 401 || res.status === 403) {
-      throw new Error('API Key 認證失敗（' + res.status + '）。建議改用 AIzaSy 格式的 Key：請至 aistudio.google.com/apikey → 點左側「Get API key」→「Create API key」');
+      if (isOAuthKey) {
+        throw new Error('AQ. Key 已過期（每小時失效）。請至個人資料 → AI 管理員設定，重新複製新的 Key 貼上');
+      }
+      throw new Error('API Key 認證失敗，請確認 Key 是否正確');
     }
-    throw new Error(msg);
+    throw new Error(err.error?.message || `Gemini 錯誤 ${res.status}`);
   }
 
   const data = await res.json();
@@ -2681,17 +2694,36 @@ async function loadAdminPanel() {
   } catch(e) { /* 非管理員讀取會被 rules 擋住，正常 */ }
 }
 
+// ─────────────────────────────────────────────
+// 管理員判斷 — 多層驗證，跨裝置可靠
+// ─────────────────────────────────────────────
+let _isAdminCache = null;
+
 async function checkIsAdmin() {
   if (!currentUser) return false;
+  if (_isAdminCache !== null) return _isAdminCache;
+
+  const email = currentUser.email;
+
   try {
     const snap = await db.collection('config').doc('admins').get();
+
     if (!snap.exists) {
-      // 沒有 admins 文件 → 第一位用戶自動成為管理員
-      await db.collection('config').doc('admins').set({ emails: [currentUser.email] });
+      // 第一次：建立 admins 文件，寫入目前用戶為管理員
+      await db.collection('config').doc('admins').set({ emails: [email] });
+      _isAdminCache = true;
       return true;
     }
-    return (snap.data().emails || []).includes(currentUser.email);
-  } catch(e) { return false; }
+
+    const admins = snap.data().emails || [];
+    _isAdminCache = admins.includes(email);
+    return _isAdminCache;
+  } catch(e) {
+    // Firestore rules 擋住讀取時（代表 admins 文件存在但此用戶不在清單）
+    // → 嘗試寫入失敗即為非管理員
+    _isAdminCache = false;
+    return false;
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -2853,11 +2885,12 @@ async function analyzePhoto() {
     document.getElementById('foodTab-manual').prepend(banner);
 
   } catch(e) {
+    const isExpired = e.message.includes('過期') || e.message.includes('401') || e.message.includes('403');
     document.getElementById('aiPhotoResult').innerHTML = `
       <div style="background:#fff5f5;border-radius:8px;padding:12px;border-left:3px solid var(--red-500);">
         <p style="color:var(--red-500);font-size:13px;font-weight:500;">辨識失敗</p>
         <p style="font-size:12px;color:var(--gray-700);margin-top:4px;">${esc(e.message)}</p>
-        <p style="font-size:11px;color:var(--gray-500);margin-top:4px;">請改用手動輸入，或確認 API Key 有 Vision 權限</p>
+        ${isExpired ? `<button class="btn btn-secondary btn-sm" style="margin-top:8px;" onclick="closeModal('foodModal');showView('profile');">→ 前往更新 AI Key</button>` : ''}
       </div>
     `;
   } finally {
@@ -2866,9 +2899,10 @@ async function analyzePhoto() {
 }
 
 // ─────────────────────────────────────────────
-// BARCODE SCANNER (ZXing)
+// BARCODE SCANNER — iOS Safari 相容版
 // ─────────────────────────────────────────────
-let _zxingReader = null;
+let _scannerStream = null;
+let _scannerRAF = null;
 let _scannerActive = false;
 
 async function startScanner() {
@@ -2876,66 +2910,95 @@ async function startScanner() {
   const video = document.getElementById('scannerVideo');
   const btn = document.getElementById('startScanBtn');
 
-  // 檢查 ZXing 是否載入
-  if (typeof ZXing === 'undefined') {
-    showToast('條碼掃描器載入中，請稍後再試', 'error'); return;
-  }
-
   try {
     wrap.style.display = 'block';
     btn.style.display = 'none';
     _scannerActive = true;
 
-    const hints = new Map();
-    const formats = [
-      ZXing.BarcodeFormat.EAN_13,
-      ZXing.BarcodeFormat.EAN_8,
-      ZXing.BarcodeFormat.CODE_128,
-      ZXing.BarcodeFormat.QR_CODE,
-      ZXing.BarcodeFormat.UPC_A,
-    ];
-    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
-    _zxingReader = new ZXing.BrowserMultiFormatReader(hints);
-
-    const devices = await ZXing.BrowserCodeReader.listVideoInputDevices();
-    // 優先後鏡頭
-    const backCam = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[0];
-    const deviceId = backCam?.deviceId;
-
-    await _zxingReader.decodeFromVideoDevice(deviceId, video, (result, err) => {
-      if (result && _scannerActive) {
-        const code = result.getText();
-        stopScanner();
-        document.getElementById('barcodeInput').value = code;
-        lookupBarcode(code);
-      }
+    // 要求後鏡頭
+    _scannerStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
     });
+    video.srcObject = _scannerStream;
+    video.setAttribute('playsinline', true); // iOS 必要
+    await video.play();
+
+    // 優先用原生 BarcodeDetector（iOS 17.4+, Chrome Android）
+    if ('BarcodeDetector' in window) {
+      const detector = new BarcodeDetector({ formats: ['ean_13','ean_8','code_128','upc_a','qr_code'] });
+      scanWithBarcodeDetector(video, detector);
+    } else if (typeof ZXing !== 'undefined') {
+      // fallback: ZXing canvas scan
+      scanWithZXing(video);
+    } else {
+      // 最後備援：提示手動輸入
+      stopScanner();
+      showToast('此瀏覽器不支援自動掃描，請手動輸入條碼', 'error');
+    }
   } catch(e) {
     stopScanner();
-    if (e.name === 'NotAllowedError') {
-      showToast('請允許相機權限才能掃描', 'error');
+    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
+      showToast('請在瀏覽器設定中允許相機權限', 'error');
+    } else if (e.name === 'NotFoundError') {
+      showToast('找不到相機裝置', 'error');
     } else {
-      showToast('相機啟動失敗，請手動輸入條碼', 'error');
+      showToast('相機啟動失敗：' + e.message, 'error');
     }
   }
 }
 
+async function scanWithBarcodeDetector(video, detector) {
+  if (!_scannerActive) return;
+  try {
+    const barcodes = await detector.detect(video);
+    if (barcodes.length > 0) {
+      const code = barcodes[0].rawValue;
+      stopScanner();
+      document.getElementById('barcodeInput').value = code;
+      lookupBarcode(code);
+      return;
+    }
+  } catch(e) {}
+  _scannerRAF = requestAnimationFrame(() => scanWithBarcodeDetector(video, detector));
+}
+
+function scanWithZXing(video) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const reader = new ZXing.BrowserMultiFormatReader();
+
+  function tick() {
+    if (!_scannerActive) return;
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+      try {
+        const imgData = canvas.toDataURL('image/jpeg', 0.8);
+        reader.decodeFromImage(undefined, imgData).then(result => {
+          if (result && _scannerActive) {
+            stopScanner();
+            document.getElementById('barcodeInput').value = result.getText();
+            lookupBarcode(result.getText());
+          }
+        }).catch(() => {});
+      } catch(e) {}
+    }
+    _scannerRAF = setTimeout(tick, 300); // 每 300ms 掃一次，省電
+  }
+  tick();
+}
+
 function stopScanner() {
   _scannerActive = false;
-  if (_zxingReader) {
-    _zxingReader.reset();
-    _zxingReader = null;
-  }
+  if (_scannerRAF) { cancelAnimationFrame(_scannerRAF); clearTimeout(_scannerRAF); _scannerRAF = null; }
+  if (_scannerStream) { _scannerStream.getTracks().forEach(t => t.stop()); _scannerStream = null; }
+  const video = document.getElementById('scannerVideo');
+  if (video) { video.srcObject = null; }
   const wrap = document.getElementById('scannerWrap');
   const btn = document.getElementById('startScanBtn');
   if (wrap) wrap.style.display = 'none';
   if (btn) btn.style.display = 'flex';
-  // stop video tracks
-  const video = document.getElementById('scannerVideo');
-  if (video && video.srcObject) {
-    video.srcObject.getTracks().forEach(t => t.stop());
-    video.srcObject = null;
-  }
 }
 
 // ─────────────────────────────────────────────
