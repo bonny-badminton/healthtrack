@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HealthTrack — 健康紀錄</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.19.1/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
@@ -1646,33 +1646,45 @@ body {
 
     <!-- Barcode Tab -->
     <div id="foodTab-barcode" style="display:none;">
-      <!-- 相機掃描區 -->
-      <div id="scannerWrap" style="position:relative;border-radius:var(--radius-md);overflow:hidden;background:#000;margin-bottom:1rem;display:none;">
-        <video id="scannerVideo" style="width:100%;max-height:240px;display:block;object-fit:cover;"></video>
-        <!-- 瞄準框 -->
-        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;">
-          <div style="width:220px;height:120px;border:2px solid var(--teal-300);border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,0.4);"></div>
-        </div>
-        <button onclick="stopScanner()" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.6);color:white;border:none;border-radius:20px;padding:4px 12px;font-size:12px;cursor:pointer;">停止</button>
-      </div>
 
-      <div style="text-align:center;padding:1rem 0.5rem 0.5rem;">
-        <button class="btn btn-primary" id="startScanBtn" onclick="startScanner()" style="width:100%;justify-content:center;margin-bottom:1rem;">
-          📷 開啟相機掃描條碼
+      <!-- 掃描器容器 (html5-qrcode 會注入到這裡) -->
+      <div id="scannerWrap" style="display:none;margin-bottom:1rem;">
+        <div id="html5qr-reader" style="border-radius:var(--radius-md);overflow:hidden;"></div>
+        <button onclick="stopScanner()" class="btn btn-secondary btn-sm" style="width:100%;margin-top:8px;justify-content:center;">
+          ✕ 停止掃描
         </button>
-
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:1rem;">
-          <div style="flex:1;height:1px;background:var(--gray-200);"></div>
-          <span style="font-size:12px;color:var(--gray-400);">或手動輸入</span>
-          <div style="flex:1;height:1px;background:var(--gray-200);"></div>
-        </div>
-
-        <div style="display:flex;gap:8px;">
-          <input type="text" class="form-input" id="barcodeInput" placeholder="輸入條碼號碼（EAN-13）" inputmode="numeric">
-          <button class="btn btn-primary" onclick="lookupBarcode()">查詢</button>
-        </div>
       </div>
-      <div id="barcodeResult" style="margin-top:0.5rem;text-align:left;"></div>
+
+      <!-- 三個入口 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1rem;" id="scannerBtns">
+        <button class="btn btn-primary" style="flex-direction:column;gap:6px;padding:16px;height:auto;justify-content:center;"
+          onclick="startScanner()">
+          <span style="font-size:26px;">📷</span>
+          <span style="font-size:13px;">開啟相機掃描</span>
+        </button>
+        <button class="btn btn-secondary" style="flex-direction:column;gap:6px;padding:16px;height:auto;justify-content:center;"
+          onclick="document.getElementById('barcodeCameraInput').click()">
+          <span style="font-size:26px;">🖼️</span>
+          <span style="font-size:13px;">拍照掃條碼</span>
+        </button>
+        <!-- 拍照後送 AI 辨識條碼 -->
+        <input type="file" id="barcodeCameraInput" accept="image/*" capture="environment"
+          style="display:none;" onchange="scanBarcodeFromPhoto(event)">
+      </div>
+
+      <!-- 分隔線 + 手動輸入 -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+        <div style="flex:1;height:1px;background:var(--gray-200);"></div>
+        <span style="font-size:12px;color:var(--gray-400);">或手動輸入條碼</span>
+        <div style="flex:1;height:1px;background:var(--gray-200);"></div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <input type="text" class="form-input" id="barcodeInput"
+          placeholder="EAN-13 條碼號碼" inputmode="numeric">
+        <button class="btn btn-primary" onclick="lookupBarcode()">查詢</button>
+      </div>
+
+      <div id="barcodeResult" style="margin-top:1rem;"></div>
     </div>
   </div>
 </div>
@@ -2644,7 +2656,7 @@ async function callAI(systemPrompt, userPrompt, imageBase64 = null) {
 }
 
 async function callGemini(key, systemPrompt, userPrompt, imageBase64) {
-  const model = 'gemini-1.5-flash';
+  const model = 'gemini-2.0-flash';
   const isOAuthKey = key.startsWith('AQ.');
 
   // AQ. key 用 Bearer token 方式
@@ -2962,107 +2974,103 @@ async function analyzePhoto() {
 }
 
 // ─────────────────────────────────────────────
-// BARCODE SCANNER — iOS Safari 相容版
+// BARCODE SCANNER — html5-qrcode (iOS Safari 相容)
 // ─────────────────────────────────────────────
-let _scannerStream = null;
-let _scannerRAF = null;
+let _html5QrScanner = null;
 let _scannerActive = false;
 
 async function startScanner() {
+  if (_scannerActive) { stopScanner(); return; }
+
+  if (typeof Html5Qrcode === 'undefined') {
+    showToast('掃描器載入中，請稍後再試', 'error'); return;
+  }
+
   const wrap = document.getElementById('scannerWrap');
-  const video = document.getElementById('scannerVideo');
-  const btn = document.getElementById('startScanBtn');
+  const btns = document.getElementById('scannerBtns');
+  wrap.style.display = 'block';
+  btns.style.display = 'none';
+  _scannerActive = true;
 
   try {
-    wrap.style.display = 'block';
-    btn.style.display = 'none';
-    _scannerActive = true;
-
-    // 要求後鏡頭
-    _scannerStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
-    });
-    video.srcObject = _scannerStream;
-    video.setAttribute('playsinline', true); // iOS 必要
-    await video.play();
-
-    // 優先用原生 BarcodeDetector（iOS 17.4+, Chrome Android）
-    if ('BarcodeDetector' in window) {
-      const detector = new BarcodeDetector({ formats: ['ean_13','ean_8','code_128','upc_a','qr_code'] });
-      scanWithBarcodeDetector(video, detector);
-    } else if (typeof ZXing !== 'undefined') {
-      // fallback: ZXing canvas scan
-      scanWithZXing(video);
-    } else {
-      // 最後備援：提示手動輸入
-      stopScanner();
-      showToast('此瀏覽器不支援自動掃描，請手動輸入條碼', 'error');
-    }
+    _html5QrScanner = new Html5Qrcode('html5qr-reader');
+    await _html5QrScanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 250, height: 150 }, aspectRatio: 1.6 },
+      (decodedText) => {
+        // 成功辨識
+        stopScanner();
+        document.getElementById('barcodeInput').value = decodedText;
+        lookupBarcode(decodedText);
+      },
+      () => {} // 掃描中錯誤忽略
+    );
   } catch(e) {
     stopScanner();
-    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
-      showToast('請在瀏覽器設定中允許相機權限', 'error');
-    } else if (e.name === 'NotFoundError') {
-      showToast('找不到相機裝置', 'error');
+    if (e.toString().includes('Permission') || e.toString().includes('NotAllowed')) {
+      showToast('請允許相機權限：設定 → Safari → 相機 → 允許', 'error');
+    } else if (e.toString().includes('NotFound')) {
+      showToast('找不到相機，請使用「拍照掃條碼」', 'error');
     } else {
-      showToast('相機啟動失敗：' + e.message, 'error');
+      // iOS Safari 可能不支援 getUserMedia in modal，改提示拍照方式
+      showToast('相機啟動失敗，請改用「🖼️ 拍照掃條碼」', 'error');
     }
   }
-}
-
-async function scanWithBarcodeDetector(video, detector) {
-  if (!_scannerActive) return;
-  try {
-    const barcodes = await detector.detect(video);
-    if (barcodes.length > 0) {
-      const code = barcodes[0].rawValue;
-      stopScanner();
-      document.getElementById('barcodeInput').value = code;
-      lookupBarcode(code);
-      return;
-    }
-  } catch(e) {}
-  _scannerRAF = requestAnimationFrame(() => scanWithBarcodeDetector(video, detector));
-}
-
-function scanWithZXing(video) {
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  const reader = new ZXing.BrowserMultiFormatReader();
-
-  function tick() {
-    if (!_scannerActive) return;
-    if (video.readyState === video.HAVE_ENOUGH_DATA) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0);
-      try {
-        const imgData = canvas.toDataURL('image/jpeg', 0.8);
-        reader.decodeFromImage(undefined, imgData).then(result => {
-          if (result && _scannerActive) {
-            stopScanner();
-            document.getElementById('barcodeInput').value = result.getText();
-            lookupBarcode(result.getText());
-          }
-        }).catch(() => {});
-      } catch(e) {}
-    }
-    _scannerRAF = setTimeout(tick, 300); // 每 300ms 掃一次，省電
-  }
-  tick();
 }
 
 function stopScanner() {
   _scannerActive = false;
-  if (_scannerRAF) { cancelAnimationFrame(_scannerRAF); clearTimeout(_scannerRAF); _scannerRAF = null; }
-  if (_scannerStream) { _scannerStream.getTracks().forEach(t => t.stop()); _scannerStream = null; }
-  const video = document.getElementById('scannerVideo');
-  if (video) { video.srcObject = null; }
   const wrap = document.getElementById('scannerWrap');
-  const btn = document.getElementById('startScanBtn');
+  const btns = document.getElementById('scannerBtns');
   if (wrap) wrap.style.display = 'none';
-  if (btn) btn.style.display = 'flex';
+  if (btns) btns.style.display = 'grid';
+
+  if (_html5QrScanner) {
+    _html5QrScanner.stop().catch(() => {});
+    _html5QrScanner.clear().catch(() => {});
+    _html5QrScanner = null;
+  }
 }
+
+// 拍照後從圖片辨識條碼（iOS 最可靠的方式）
+async function scanBarcodeFromPhoto(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
+
+  if (typeof Html5Qrcode === 'undefined') {
+    showToast('掃描器載入中，請稍後再試', 'error'); return;
+  }
+
+  const resultEl = document.getElementById('barcodeResult');
+  resultEl.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;padding:12px;color:var(--gray-500);font-size:13px;">
+      <div style="width:14px;height:14px;border:2px solid var(--teal-300);border-top-color:var(--teal-700);border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0;"></div>
+      <span>辨識條碼中...</span>
+    </div>`;
+
+  try {
+    const scanner = new Html5Qrcode('html5qr-reader-static');
+    const result = await scanner.scanFile(file, false);
+    scanner.clear().catch(() => {});
+    document.getElementById('barcodeInput').value = result;
+    lookupBarcode(result);
+  } catch(e) {
+    // 圖片中找不到條碼 → 嘗試用 AI 辨識
+    resultEl.innerHTML = `
+      <div style="background:#fff8e1;border-radius:8px;padding:12px;border-left:3px solid #ffd54f;">
+        <p style="font-size:13px;font-weight:500;color:#e65100;">圖片中找不到條碼</p>
+        <p style="font-size:12px;color:var(--gray-700);margin-top:4px;">請確保條碼清晰可見，或改用手動輸入</p>
+      </div>`;
+  }
+}
+// html5-qrcode 需要一個靜態 div 供 scanFile 使用
+document.addEventListener('DOMContentLoaded', () => {
+  const div = document.createElement('div');
+  div.id = 'html5qr-reader-static';
+  div.style.display = 'none';
+  document.body.appendChild(div);
+});
 
 // ─────────────────────────────────────────────
 // BARCODE LOOKUP — 多資料庫查詢
