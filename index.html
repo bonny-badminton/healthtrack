@@ -1371,8 +1371,21 @@ body {
     <!-- ── PROFILE VIEW ── -->
     <div class="view" id="view-profile">
       <div class="view-header">
-        <h2>個人資料</h2>
-        <p>管理你的基本健康數據</p>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+          <div>
+            <h2>個人資料</h2>
+            <p>管理你的基本健康數據</p>
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="signOut()">↩ 登出</button>
+        </div>
+      </div>
+      <!-- 用戶資訊卡 -->
+      <div class="card" style="margin-bottom:1rem;display:flex;align-items:center;gap:1rem;">
+        <div class="user-avatar" id="profileAvatar" style="width:52px;height:52px;font-size:20px;flex-shrink:0;"></div>
+        <div>
+          <div style="font-size:16px;font-weight:600;" id="profileName">—</div>
+          <div style="font-size:13px;color:var(--gray-500);" id="profileEmail">—</div>
+        </div>
       </div>
       <div class="card-grid card-grid-2">
         <div class="card">
@@ -1513,11 +1526,11 @@ body {
     <button class="mobile-nav-item" onclick="showView('weight')" data-mview="weight">
       <span class="m-icon">⚖️</span>體重
     </button>
-    <button class="mobile-nav-item" onclick="showView('review')" data-mview="review">
-      <span class="m-icon">📈</span>分析
-    </button>
     <button class="mobile-nav-item" onclick="showView('ai')" data-mview="ai">
       <span class="m-icon">🤖</span>AI
+    </button>
+    <button class="mobile-nav-item" onclick="showView('profile')" data-mview="profile">
+      <span class="m-icon">👤</span>設定
     </button>
   </nav>
 </div>
@@ -1592,16 +1605,38 @@ body {
 
     <!-- Photo Tab -->
     <div id="foodTab-photo" style="display:none;">
-      <div class="upload-zone" id="photoZone" onclick="document.getElementById('photoInput').click()">
-        <div style="font-size:36px;">📸</div>
-        <p>點擊或拖放食物照片</p>
-        <p style="font-size:11px;color:var(--gray-300);">支援 JPG、PNG</p>
-        <input type="file" id="photoInput" accept="image/*" style="display:none;" onchange="handlePhotoUpload(event)">
+      <!-- 兩個入口：上傳 or 直接拍照 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1rem;">
+        <button class="btn btn-secondary" style="flex-direction:column;gap:6px;padding:16px;height:auto;"
+          onclick="document.getElementById('photoInput').click()">
+          <span style="font-size:26px;">🖼️</span>
+          <span style="font-size:13px;">從相簿選取</span>
+        </button>
+        <button class="btn btn-primary" style="flex-direction:column;gap:6px;padding:16px;height:auto;"
+          onclick="document.getElementById('cameraInput').click()">
+          <span style="font-size:26px;">📷</span>
+          <span style="font-size:13px;">直接拍照</span>
+        </button>
       </div>
-      <div id="photoPreview" style="display:none;margin-top:1rem;">
-        <img id="photoImg" style="width:100%;max-height:200px;object-fit:cover;border-radius:var(--radius-md);">
+
+      <!-- hidden file inputs -->
+      <!-- accept="image/*" 讓用戶從相簿選 -->
+      <input type="file" id="photoInput" accept="image/*" style="display:none;"
+        onchange="handlePhotoUpload(event)">
+      <!-- capture="environment" 直接開後鏡頭拍照 -->
+      <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none;"
+        onchange="handlePhotoUpload(event)">
+
+      <!-- 預覽區 -->
+      <div id="photoPreview" style="display:none;margin-bottom:1rem;position:relative;">
+        <img id="photoImg" style="width:100%;max-height:220px;object-fit:cover;border-radius:var(--radius-md);">
+        <button onclick="resetPhoto()"
+          style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.55);color:white;border:none;
+                 border-radius:50%;width:28px;height:28px;font-size:16px;cursor:pointer;display:flex;
+                 align-items:center;justify-content:center;">✕</button>
       </div>
-      <div id="aiAnalyzeSection" style="display:none;margin-top:1rem;">
+
+      <div id="aiAnalyzeSection" style="display:none;">
         <button class="btn btn-primary" id="analyzePhotoBtn" style="width:100%;justify-content:center;" onclick="analyzePhoto()">
           🤖 AI 分析熱量
         </button>
@@ -2222,10 +2257,7 @@ function resetFoodForm() {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
-  uploadedPhotoBase64 = null;
-  document.getElementById('photoPreview').style.display = 'none';
-  document.getElementById('aiAnalyzeSection').style.display = 'none';
-  document.getElementById('aiPhotoResult').innerHTML = '';
+  resetPhoto();
   document.getElementById('barcodeResult').innerHTML = '';
   document.getElementById('barcodeInput').value = '';
 }
@@ -2401,9 +2433,25 @@ function loadProfileForm() {
   document.getElementById('p-goalweight').value= userProfile.goalWeight|| '';
   document.getElementById('p-activity').value  = userProfile.activity  || '1.55';
   document.getElementById('p-goal').value      = userProfile.goal      || 'maintain';
+
+  // 頂部用戶資訊
+  if (currentUser) {
+    const name = currentUser.displayName || '用戶';
+    document.getElementById('profileName').textContent = name;
+    document.getElementById('profileEmail').textContent = currentUser.email;
+    const av = document.getElementById('profileAvatar');
+    if (av) {
+      if (currentUser.photoURL) {
+        av.innerHTML = `<img src="${currentUser.photoURL}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+      } else {
+        av.textContent = name[0].toUpperCase();
+      }
+    }
+  }
+
   renderMetabolicStats();
   loadAdminPanel();
-  // 更新 AI 狀態 badge 給一般用戶
+  // AI 狀態給一般用戶看
   getSharedAIKey().then(key => {
     const badge = document.getElementById('aiStatusBadge');
     if (badge) badge.innerHTML = key
@@ -2824,6 +2872,21 @@ function handlePhotoUpload(e) {
     document.getElementById('aiPhotoResult').innerHTML = '';
   };
   reader.readAsDataURL(file);
+  // ★ 關鍵修正：清除 input value，讓同一張照片或重新選取都能觸發 onchange
+  e.target.value = '';
+}
+
+function resetPhoto() {
+  uploadedPhotoBase64 = null;
+  uploadedPhotoMime = 'image/jpeg';
+  document.getElementById('photoPreview').style.display = 'none';
+  document.getElementById('aiAnalyzeSection').style.display = 'none';
+  document.getElementById('aiPhotoResult').innerHTML = '';
+  document.getElementById('photoImg').src = '';
+  document.getElementById('photoInput').value = '';
+  document.getElementById('cameraInput').value = '';
+  const banner = document.getElementById('manualTabAIBanner');
+  if (banner) banner.remove();
 }
 
 async function analyzePhoto() {
