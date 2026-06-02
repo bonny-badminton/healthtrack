@@ -2656,7 +2656,7 @@ async function callAI(systemPrompt, userPrompt, imageBase64 = null) {
 }
 
 async function callGemini(key, systemPrompt, userPrompt, imageBase64) {
-  const model = 'gemini-2.0-flash';
+  const model = 'gemini-2.5-flash';
   const isOAuthKey = key.startsWith('AQ.');
 
   // AQ. key 用 Bearer token 方式
