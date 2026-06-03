@@ -2675,12 +2675,13 @@ async function callAI(systemPrompt, userPrompt, imageBase64 = null) {
 }
 
 async function callGemini(key, systemPrompt, userPrompt, imageBase64) {
-  const model = 'gemini-2.5-flash';
-  const isOAuthKey = key.startsWith('AQ.');
+  // 備援模型清單：主要用 2.5-flash，過載時降級
+  const models = imageBase64
+    ? ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-latest']
+    : ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-latest'];
 
-  // AQ. key 用 Bearer token 方式
+  const isOAuthKey = key.startsWith('AQ.');
   const headers = { 'Content-Type': 'application/json' };
-  const urlKey = isOAuthKey ? '' : `?key=${key}`;
   if (isOAuthKey) headers['Authorization'] = `Bearer ${key}`;
 
   const parts = [];
@@ -2690,33 +2691,51 @@ async function callGemini(key, systemPrompt, userPrompt, imageBase64) {
   }
   parts.push({ text: systemPrompt + '\n\n' + userPrompt });
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent${urlKey}`,
-    {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: { maxOutputTokens: 1500, temperature: 0.7 }
-      })
-    }
-  );
+  let lastError = null;
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    if (res.status === 401 || res.status === 403) {
-      if (isOAuthKey) {
-        throw new Error('AQ. Key 已過期（每小時失效）。請至個人資料 → AI 管理員設定，重新複製新的 Key 貼上');
+  for (const model of models) {
+    const urlKey = isOAuthKey ? '' : `?key=${key}`;
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent${urlKey}`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig: { maxOutputTokens: 1500, temperature: 0.4 }
+          })
+        }
+      );
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const errMsg = err.error?.message || '';
+
+        if (res.status === 401 || res.status === 403) {
+          if (isOAuthKey) throw new Error('AQ. Key 已過期，請至個人資料重新貼上新的 Key');
+          throw new Error('API Key 認證失敗，請確認 Key 是否正確');
+        }
+        // 過載或模型不可用 → 試下一個備援模型
+        if (res.status === 503 || res.status === 429 || errMsg.includes('not found') || errMsg.includes('high demand')) {
+          lastError = new Error(errMsg || `模型 ${model} 暫時無法使用`);
+          continue;
+        }
+        throw new Error(errMsg || `Gemini 錯誤 ${res.status}`);
       }
-      throw new Error('API Key 認證失敗，請確認 Key 是否正確');
+
+      const data = await res.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) { lastError = new Error('Gemini 未返回內容'); continue; }
+      return text;
+
+    } catch(e) {
+      if (e.message.includes('Key') || e.message.includes('認證')) throw e;
+      lastError = e;
     }
-    throw new Error(err.error?.message || `Gemini 錯誤 ${res.status}`);
   }
 
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Gemini 未返回內容，請稍後再試');
-  return text;
+  throw lastError || new Error('所有 Gemini 模型暫時無法使用，請稍後再試');
 }
 
 // ─────────────────────────────────────────────
@@ -2934,18 +2953,47 @@ async function analyzePhoto() {
     </div>
   `;
 
-  const systemPrompt = '你是一位專業營養師，擅長從食物照片估算熱量和營養素。請仔細辨識照片中所有食物。';
-  const userPrompt = `請辨識這張照片中的所有食物，估算整份餐點的熱量和巨量營養素。
-只用純 JSON 格式回覆，不要任何其他文字或代碼塊標記：
-{"foodName":"食物名稱（中文）","calories":數字,"protein":數字,"carbs":數字,"fat":數字,"amount":數字,"note":"簡短說明估算依據"}`;
+  const systemPrompt = '你是一位專業營養師，擅長從食物照片估算熱量和營養素。請仔細辨識照片中所有食物。重要：只能回覆純 JSON，不可有任何其他文字、解釋、或 markdown 標記。';
+  const userPrompt = `辨識照片中所有食物，估算整份餐點營養。
+只回覆這個 JSON 格式，數字不加引號：
+{"foodName":"中文食物名稱","calories":數字,"protein":數字,"carbs":數字,"fat":數字,"amount":數字,"note":"估算說明"}`;
 
   try {
     const raw = await callAI(systemPrompt, userPrompt, uploadedPhotoBase64);
-    const cleaned = raw.replace(/```json|```/g,'').trim();
-    // find JSON in response (model may add extra text)
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error('無法解析回應格式');
-    const json = JSON.parse(match[0]);
+
+    // 多層解析策略
+    let json = null;
+
+    // 1. 直接解析
+    try { json = JSON.parse(raw.trim()); } catch(e1) {}
+
+    // 2. 去除 markdown code block
+    if (!json) {
+      try {
+        const cleaned = raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+        json = JSON.parse(cleaned);
+      } catch(e2) {}
+    }
+
+    // 3. 用 regex 找 JSON 物件
+    if (!json) {
+      const match = raw.match(/\{[\s\S]*?\}/);
+      if (match) {
+        try { json = JSON.parse(match[0]); } catch(e3) {}
+      }
+    }
+
+    // 4. 找最後一個完整 JSON（有時 Gemini 先說話再給 JSON）
+    if (!json) {
+      const matches = [...raw.matchAll(/\{[\s\S]*?\}/g)];
+      for (const m of matches.reverse()) {
+        try { json = JSON.parse(m[0]); if (json.calories) break; } catch(e4) {}
+      }
+    }
+
+    if (!json || (!json.calories && !json.foodName)) {
+      throw new Error('AI 回應無法解析，請再試一次');
+    }
 
     document.getElementById('fm-name').value    = json.foodName || '';
     document.getElementById('fm-cal').value     = json.calories  || '';
@@ -3017,12 +3065,16 @@ async function startScanner() {
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 250, height: 150 }, aspectRatio: 1.6 },
       (decodedText) => {
-        // 成功辨識
+        if (!_scannerActive) return;
+        // 先記錄結果再停止，避免 DOM 清空競爭
+        const code = decodedText;
         stopScanner();
-        document.getElementById('barcodeInput').value = decodedText;
-        lookupBarcode(decodedText);
+        setTimeout(() => {
+          document.getElementById('barcodeInput').value = code;
+          lookupBarcode(code);
+        }, 100);
       },
-      () => {} // 掃描中錯誤忽略
+      () => {}
     );
   } catch(e) {
     stopScanner();
@@ -3126,30 +3178,36 @@ async function lookupBarcode(codeArg) {
 }
 
 async function fetchFromMultipleDBs(code) {
-  // 1. Open Food Facts 全球庫
-  try {
-    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json`);
-    const d = await r.json();
-    if (d.status === 1 && d.product?.nutriments) {
-      return parseOFFProduct(d.product);
-    }
-  } catch(e) {}
+  // 同時查詢多個資料庫，取第一個成功的
+  const queries = [
+    // 1. Open Food Facts 全球（含台灣商品）
+    fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json`),
+    // 2. Open Food Facts 台灣站
+    fetch(`https://tw.openfoodfacts.org/api/v2/product/${code}.json`),
+    // 3. Open Food Facts 日本站（大量台灣進口）
+    fetch(`https://jp.openfoodfacts.org/api/v2/product/${code}.json`),
+  ];
 
-  // 2. Open Food Facts 台灣庫
-  try {
-    const r = await fetch(`https://tw.openfoodfacts.org/api/v2/product/${code}.json`);
-    const d = await r.json();
-    if (d.status === 1 && d.product?.nutriments) {
-      return parseOFFProduct(d.product);
-    }
-  } catch(e) {}
+  for (const reqPromise of queries) {
+    try {
+      const r = await reqPromise;
+      const d = await r.json();
+      if (d.status === 1 && d.product) {
+        const p = d.product;
+        // 允許 nutriments 不完整，至少有名稱就顯示
+        if (p.product_name || p.product_name_zh || p.product_name_zh_TW) {
+          return parseOFFProduct(p);
+        }
+      }
+    } catch(e) {}
+  }
 
-  // 3. Open Food Facts 日本庫（台灣進口日本食品很多）
+  // 4. 用 Open Food Facts 搜尋 API（備援）
   try {
-    const r = await fetch(`https://jp.openfoodfacts.org/api/v2/product/${code}.json`);
+    const r = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?code=${code}&action=process&json=1`);
     const d = await r.json();
-    if (d.status === 1 && d.product?.nutriments) {
-      return parseOFFProduct(d.product);
+    if (d.products && d.products.length > 0) {
+      return parseOFFProduct(d.products[0]);
     }
   } catch(e) {}
 
