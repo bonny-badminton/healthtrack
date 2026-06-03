@@ -1832,6 +1832,17 @@ function saveFirebaseConfig() {
 }
 
 function setupAuthListener() {
+  // 處理 iOS Safari redirect 登入後的結果
+  auth.getRedirectResult().then(result => {
+    if (result && result.user) {
+      // redirect 登入成功，onAuthStateChanged 會接手
+    }
+  }).catch(e => {
+    if (e.code !== 'auth/no-current-user') {
+      showToast('登入失敗：' + e.message, 'error');
+    }
+  });
+
   auth.onAuthStateChanged(async user => {
     if (user) {
       currentUser = user;
@@ -1873,12 +1884,20 @@ async function signInWithGoogle() {
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
-    await auth.signInWithPopup(provider);
-    // auth listener will handle navigation
+    // iOS Safari 用 redirect，其他用 popup
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    if (isIOS || isSafari) {
+      sessionStorage.setItem('ht_redirect_login', '1');
+      await auth.signInWithRedirect(provider);
+      // redirect 後頁面會重新載入，不會執行後續程式碼
+    } else {
+      await auth.signInWithPopup(provider);
+    }
   } catch(e) {
     btn.innerHTML = origHTML;
     btn.disabled = false;
-    const msg = e.code === 'auth/popup-closed-by-user' ? '登入視窗已關閉'
+    const msg = e.code === 'auth/popup-closed-by-user' ? '登入視窗已關閉，請再試一次'
                : e.code === 'auth/network-request-failed' ? '網路連線問題，請稍後再試'
                : e.code === 'auth/unauthorized-domain' ? '此網域未授權，請至 Firebase Console → Authentication → 已授權網域 加入目前網址'
                : e.message;
@@ -3423,9 +3442,18 @@ window.addEventListener('DOMContentLoaded', () => {
   showPage('login');
   initSetupProgress();
 
+  // 若是從 Google redirect 回來，顯示 loading 狀態
+  if (sessionStorage.getItem('ht_redirect_login')) {
+    sessionStorage.removeItem('ht_redirect_login');
+    const btn = document.querySelector('.btn-google');
+    if (btn) {
+      btn.innerHTML = '<span style="width:20px;height:20px;border:2px solid #ccc;border-top-color:#00897b;border-radius:50%;display:inline-block;animation:spin .7s linear infinite;"></span> 登入中...';
+      btn.disabled = true;
+    }
+  }
+
   if (!loadFirebaseConfig()) {
     // Firebase 未設定 → 點登入按鈕時才跳設定 Modal
-    // （由 signInWithGoogle 的 !auth 判斷處理）
   }
 });
 </script>
