@@ -2703,7 +2703,12 @@ async function callGemini(key, systemPrompt, userPrompt, imageBase64) {
           headers,
           body: JSON.stringify({
             contents: [{ parts }],
-            generationConfig: { maxOutputTokens: 1500, temperature: 0.4 }
+            generationConfig: {
+              maxOutputTokens: 1500,
+              temperature: imageBase64 ? 0 : 0.4,
+              // 有圖片時強制 JSON 輸出（Gemini 2.0+ 支援）
+              ...(imageBase64 ? { responseMimeType: 'application/json' } : {})
+            }
           })
         }
       );
@@ -2953,10 +2958,11 @@ async function analyzePhoto() {
     </div>
   `;
 
-  const systemPrompt = '你是一位專業營養師，擅長從食物照片估算熱量和營養素。請仔細辨識照片中所有食物。重要：只能回覆純 JSON，不可有任何其他文字、解釋、或 markdown 標記。';
-  const userPrompt = `辨識照片中所有食物，估算整份餐點營養。
-只回覆這個 JSON 格式，數字不加引號：
-{"foodName":"中文食物名稱","calories":數字,"protein":數字,"carbs":數字,"fat":數字,"amount":數字,"note":"估算說明"}`;
+  const systemPrompt = '你是營養師。只能輸出 JSON，禁止輸出任何其他文字。';
+  const userPrompt = `看這張食物照片，輸出一個 JSON 物件，格式完全如下（數字不加引號，不加任何說明）：
+{"foodName":"中文名稱","calories":500,"protein":25,"carbs":60,"fat":15,"amount":400,"note":"簡短說明"}
+
+只輸出這個 JSON，不要其他任何文字。`;
 
   try {
     const raw = await callAI(systemPrompt, userPrompt, uploadedPhotoBase64);
@@ -2967,32 +2973,37 @@ async function analyzePhoto() {
     // 1. 直接解析
     try { json = JSON.parse(raw.trim()); } catch(e1) {}
 
-    // 2. 去除 markdown code block
+    // 2. 去除 markdown code block（支援多行）
     if (!json) {
       try {
-        const cleaned = raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+        const cleaned = raw.replace(/^```(?:json)?\s*/im,'').replace(/\s*```\s*$/m,'').trim();
         json = JSON.parse(cleaned);
       } catch(e2) {}
     }
 
-    // 3. 用 regex 找 JSON 物件
+    // 3. 貪婪 regex 找最外層 JSON 物件（修正：用貪婪模式避免嵌套截斷）
     if (!json) {
-      const match = raw.match(/\{[\s\S]*?\}/);
+      const match = raw.match(/\{[\s\S]*\}/);
       if (match) {
         try { json = JSON.parse(match[0]); } catch(e3) {}
       }
     }
 
-    // 4. 找最後一個完整 JSON（有時 Gemini 先說話再給 JSON）
+    // 4. 逐行找 JSON 起點
     if (!json) {
-      const matches = [...raw.matchAll(/\{[\s\S]*?\}/g)];
-      for (const m of matches.reverse()) {
-        try { json = JSON.parse(m[0]); if (json.calories) break; } catch(e4) {}
+      const lines = raw.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim().startsWith('{')) {
+          const candidate = lines.slice(i).join('\n');
+          const m = candidate.match(/\{[\s\S]*\}/);
+          if (m) { try { json = JSON.parse(m[0]); if (json) break; } catch(e4) {} }
+        }
       }
     }
 
     if (!json || (!json.calories && !json.foodName)) {
-      throw new Error('AI 回應無法解析，請再試一次');
+      // 顯示原始回應幫助 debug
+      throw new Error(`解析失敗。AI 回應：${raw.slice(0,200)}`);
     }
 
     document.getElementById('fm-name').value    = json.foodName || '';
@@ -3164,14 +3175,15 @@ async function lookupBarcode(codeArg) {
   if (product) {
     renderBarcodeResult(product);
   } else {
-    // 找不到 → 提示用 AI 估算或手動輸入
+    // 找不到 → 嘗試用 AI 根據條碼猜測（如果 AI 可用）
+    const hasAI = await hasAIKey();
     resultEl.innerHTML = `
       <div style="background:#fff8e1;border-radius:8px;padding:12px;border-left:3px solid #ffd54f;margin-bottom:12px;">
         <p style="font-size:13px;font-weight:500;color:#e65100;">找不到條碼 ${code} 的食品資料</p>
-        <p style="font-size:12px;color:var(--gray-700);margin-top:4px;">此商品可能尚未收錄在資料庫中</p>
+        <p style="font-size:12px;color:var(--gray-700);margin-top:4px;">此商品尚未收錄在 Open Food Facts 資料庫中</p>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-secondary btn-sm" onclick="switchFoodTab('manual', document.querySelector('[onclick=\\'switchFoodTab(\\'manual\\',this)\\']'))">✏️ 手動輸入</button>
+        <button class="btn btn-secondary btn-sm" onclick="switchFoodTab('manual', document.querySelectorAll('#foodModal .tab-btn')[0])">✏️ 手動輸入</button>
         <button class="btn btn-secondary btn-sm" onclick="switchFoodTab('photo', document.querySelectorAll('#foodModal .tab-btn')[1])">📸 改用拍照辨識</button>
       </div>`;
   }
