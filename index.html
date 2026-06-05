@@ -2705,9 +2705,7 @@ async function callGemini(key, systemPrompt, userPrompt, imageBase64) {
             contents: [{ parts }],
             generationConfig: {
               maxOutputTokens: 1500,
-              temperature: imageBase64 ? 0 : 0.4,
-              // 有圖片時強制 JSON 輸出（Gemini 2.0+ 支援）
-              ...(imageBase64 ? { responseMimeType: 'application/json' } : {})
+              temperature: 0.2
             }
           })
         }
@@ -2715,18 +2713,21 @@ async function callGemini(key, systemPrompt, userPrompt, imageBase64) {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        const errMsg = err.error?.message || '';
+        const errMsg = err.error?.message || `HTTP ${res.status}`;
 
         if (res.status === 401 || res.status === 403) {
           if (isOAuthKey) throw new Error('AQ. Key 已過期，請至個人資料重新貼上新的 Key');
-          throw new Error('API Key 認證失敗，請確認 Key 是否正確');
+          throw new Error('API Key 認證失敗：' + errMsg);
         }
-        // 過載或模型不可用 → 試下一個備援模型
-        if (res.status === 503 || res.status === 429 || errMsg.includes('not found') || errMsg.includes('high demand')) {
-          lastError = new Error(errMsg || `模型 ${model} 暫時無法使用`);
+        if (res.status === 503 || res.status === 429 ||
+            errMsg.includes('not found') || errMsg.includes('high demand') ||
+            errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('overloaded')) {
+          lastError = new Error(`[${model}] ${errMsg}`);
           continue;
         }
-        throw new Error(errMsg || `Gemini 錯誤 ${res.status}`);
+        // 其他錯誤也嘗試下一個模型，並記錄完整訊息
+        lastError = new Error(`[${model}] ${errMsg}`);
+        continue;
       }
 
       const data = await res.json();
